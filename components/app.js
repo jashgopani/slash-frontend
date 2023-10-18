@@ -4,6 +4,7 @@ function App({}) {
 			<div class='d-flex flex-column'>
 				<Navbar />
 				<FilterBar />
+				<ProductResults products={mockProducts} />
 			</div>
 		</>
 	);
@@ -68,6 +69,7 @@ function Filter(props) {
 	//TODO - add state management for selected option
 	switch (props.type) {
 		case 'DROPDOWN':
+			const defaultIndex = props.default ? props.default : 0;
 			return (
 				<div class='btn-group'>
 					<button
@@ -78,19 +80,79 @@ function Filter(props) {
 						{props.title}
 					</button>
 					<ul class='dropdown-menu'>
-						{props.options.map(i => (
-							<li key={i}>
-								<a class='dropdown-item' href='#'>
-									{i}
-								</a>
-							</li>
-						))}
+						<div class='form-check'>
+							{props.options.map((i, index) => (
+								<li key={i} class='dropdown-item'>
+									<input
+										class='form-check-input'
+										type='radio'
+										name={i}
+										id={i}
+										checked={index === defaultIndex}
+									/>
+									<label class='form-check-label' for='flexRadioDefault1'>
+										{i}
+									</label>
+								</li>
+							))}
+						</div>
 					</ul>
 				</div>
 			);
 		default:
 			return <></>;
 	}
+}
+
+function ProductResults(props) {
+	return (
+		<div className='container d-inline-flex flex-wrap justify-content-start gap-3'>
+			{props.products &&
+				props.products.length > 0 &&
+				props.products.map(p => (
+					<ProductCard
+						key={p.marketplace + '#' + p.title}
+						title={p.title}
+						rating={p.rating}
+						imgSrc={p.imgSrc}
+						marketplace={p.marketplace}
+						price={p.price}
+						currency={p.currency}
+						productURL={p.productURL}
+					/>
+				))}
+		</div>
+	);
+}
+
+function ProductCard({ title, rating, imgSrc, marketplace, price, currency, productURL }) {
+	const finalRating = Math.round(rating);
+	return (
+		<div class='card mx-2 flex-grow-1' style={{ maxWidth: '280px' }}>
+			<div class='card-body'>
+				<img src={imgSrc} class='card-img-top' alt={title + ' from ' + marketplace} />
+				<h5 class='card-title'>{title}</h5>
+				<p class='card-text'>
+					<div class='ratings'>
+						{Array(5)
+							.fill()
+							.map((e, i) => i < finalRating)
+							.map(v =>
+								v ? (
+									<ion-icon name='star'></ion-icon>
+								) : (
+									<ion-icon name='star-outline'></ion-icon>
+								)
+							)}
+						<h5 class='review-count'>12 Reviews</h5>
+					</div>
+				</p>
+				<a href='#' class='btn btn-primary'>
+					Go somewhere
+				</a>
+			</div>
+		</div>
+	);
 }
 
 function Search() {
