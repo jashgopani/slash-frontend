@@ -1,10 +1,11 @@
 function App({}) {
 	return (
 		<>
-			<div class='d-flex flex-column'>
+			<div class='d-flex flex-column gap-2'>
 				<Navbar />
 				<FilterBar />
 				<ProductResults products={mockProducts} />
+				<div className='my-2 btn btn-outline-primary rounded-pill'>View more</div>
 			</div>
 		</>
 	);
@@ -16,14 +17,14 @@ function Navbar() {
 			<a class='navbar-brand flex-grow-0 ' href='#'>
 				<img src='../assets/slash.png' alt='Slash-logo' width='auto' height='32' />
 			</a>
-			<form class='searchbar d-flex flex-grow-1' role='search'>
+			<form class='d-flex flex-grow-1' role='search'>
 				<input
-					class='form-control me-2'
+					class='form-control me-2 rounded-pill'
 					type='search'
 					placeholder='What are you looking for today ?'
 					aria-label='Search'
 				/>
-				<button class='btn btn-outline-success' type='submit'>
+				<button class='btn btn-outline-success rounded-pill' type='submit'>
 					Search
 				</button>
 			</form>
@@ -33,8 +34,8 @@ function Navbar() {
 
 function FilterBar() {
 	return (
-		<div class='d-flex p-2'>
-			<div className='d-flex gap-2 flex-grow-1 '>
+		<div class='d-flex justify-content-between'>
+			<div className='d-flex gap-2 flex-grow-1 justify-content-start'>
 				<Filter
 					type='DROPDOWN'
 					title='Sort By'
@@ -56,8 +57,8 @@ function FilterBar() {
 					options={['Price', 'Marketplace', 'Ratings']}
 				/>
 			</div>
-			<div className='flex-shrink-1'>
-				<button type='button' class='btn btn-primary'>
+			<div className='flex-shrink-0'>
+				<button type='button' class='btn btn-primary rounded-pill'>
 					clear filters
 				</button>
 			</div>
@@ -71,7 +72,7 @@ function Filter(props) {
 		case 'DROPDOWN':
 			const defaultIndex = props.default ? props.default : 0;
 			return (
-				<div class='btn-group'>
+				<div class='btn-group flex-shrink-0'>
 					<button
 						type='button'
 						class='btn btn-outline-secondary dropdown-toggle rounded-pill'
@@ -106,21 +107,28 @@ function Filter(props) {
 
 function ProductResults(props) {
 	return (
-		<div className='container d-inline-flex flex-wrap justify-content-start gap-3'>
-			{props.products &&
-				props.products.length > 0 &&
-				props.products.map(p => (
-					<ProductCard
-						key={p.marketplace + '#' + p.title}
-						title={p.title}
-						rating={p.rating}
-						imgSrc={p.imgSrc}
-						marketplace={p.marketplace}
-						price={p.price}
-						currency={p.currency}
-						productURL={p.productURL}
-					/>
-				))}
+		<div className='container-fluid'>
+			<h3>Search Results</h3>
+			<div className='d-inline-flex flex-wrap justify-content-between gap-2'>
+				{props.products &&
+					props.products.length > 0 &&
+					props.products.map(p => {
+						const rw = Math.round(100 + Math.random() * 1000);
+						const rh = Math.round(100 + Math.random() * 1000);
+						return (
+							<ProductCard
+								key={p.marketplace + '#' + p.title}
+								title={p.title.substring(0, 20)}
+								rating={p.rating}
+								imgSrc={`https://picsum.photos/${rw}/${rh}`}
+								marketplace={p.marketplace}
+								price={p.price}
+								currency={p.currency}
+								productURL={p.productURL}
+							/>
+						);
+					})}
+			</div>
 		</div>
 	);
 }
@@ -128,15 +136,26 @@ function ProductResults(props) {
 function ProductCard({ title, rating, imgSrc, marketplace, price, currency, productURL }) {
 	const finalRating = Math.round(rating);
 	return (
-		<div class='card mx-2 flex-grow-1' style={{ maxWidth: '280px' }}>
-			<div class='card-body'>
-				<img src={imgSrc} class='card-img-top' alt={title + ' from ' + marketplace} />
-				<h5 class='card-title'>{title}</h5>
-				<p class='card-text'>
+		<div
+			class='card'
+			style={{ minWidth: 'min-content', maxWidth: '240px', overflow: 'hidden' }}>
+			<div class='card-body text-truncate text-nowrap' style={{ minWidth: '0' }}>
+				<img
+					src={imgSrc}
+					class='card-img-top img-responsive'
+					alt={title + ' from ' + marketplace}
+					style={{ width: '240px', height: '280px', objectFit: 'cover' }}
+				/>
+				<h5
+					class='card-title text-truncate '
+					style={{ minWidth: '0px', maxWidth: '240px' }}>
+					{title}
+				</h5>
+				<p class='card-text text-truncate'>
 					<div class='ratings'>
 						{Array(5)
 							.fill()
-							.map((e, i) => i < finalRating)
+							.map((_e, i) => i < finalRating)
 							.map(v =>
 								v ? (
 									<ion-icon name='star'></ion-icon>
@@ -144,12 +163,9 @@ function ProductCard({ title, rating, imgSrc, marketplace, price, currency, prod
 									<ion-icon name='star-outline'></ion-icon>
 								)
 							)}
-						<h5 class='review-count'>12 Reviews</h5>
+						<span class='mx-2 review-count fs-6 fw-lighter text-secondary'>12</span>
 					</div>
 				</p>
-				<a href='#' class='btn btn-primary'>
-					Go somewhere
-				</a>
 			</div>
 		</div>
 	);
