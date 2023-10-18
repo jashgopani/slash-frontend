@@ -12,6 +12,7 @@ function App({}) {
 }
 
 function Navbar() {
+	//
 	return (
 		<nav class='navbar bg-body-tertiary d-flex p-2 flex-nowrap '>
 			<a class='navbar-brand flex-grow-0 ' href='#'>
