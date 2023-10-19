@@ -1,24 +1,37 @@
+const { useState, useReducer } = React;
+
+const appState = {
+	searchResults: [],
+	searchStatus: 0, //0-no search in progress;1-fetching data;2-fetched
+};
+const reducer = (state, action) => {};
 function App({}) {
+	const [state, dispatch] = useReducer(reducer, appState);
 	return (
 		<>
 			<div class='d-flex flex-column gap-2'>
 				<Navbar />
-				<FilterBar />
-				<ProductResults products={mockProducts} />
-				<div className='my-2 btn btn-outline-primary rounded-pill'>View more</div>
+				<ProductResults products={state['searchResults']} />
+				{/* <div className='my-2 btn btn-outline-primary rounded-pill px-4'>View more</div> */}
 			</div>
 		</>
 	);
 }
 
 function Navbar() {
-	//
 	return (
-		<nav class='navbar bg-body-tertiary d-flex p-2 flex-nowrap '>
+		<nav class='navbar bg-body-tertiary d-flex p-2 flex-nowrap px-4'>
 			<a class='navbar-brand flex-grow-0 ' href='#'>
 				<img src='../assets/slash.png' alt='Slash-logo' width='auto' height='32' />
 			</a>
-			<form class='d-flex flex-grow-1' role='search'>
+			<form
+				class='d-flex flex-grow-1'
+				role='search'
+				onSubmit={e => {
+					e.preventDefault();
+					console.log('form submitted');
+					//TODO - fetch products using api and update the relevant state variables
+				}}>
 				<input
 					class='form-control me-2 rounded-pill'
 					type='search'
@@ -33,82 +46,173 @@ function Navbar() {
 	);
 }
 
-function FilterBar() {
+function FilterBar({}) {
 	return (
-		<div class='d-flex justify-content-between'>
-			<div className='d-flex gap-2 flex-grow-1 justify-content-start'>
-				<Filter
-					type='DROPDOWN'
-					title='Sort By'
-					options={['Price', 'Marketplace', 'Ratings']}
-				/>
-				<Filter
-					type='DROPDOWN'
-					title='Sort By'
-					options={['Price', 'Marketplace', 'Ratings']}
-				/>
-				<Filter
-					type='DROPDOWN'
-					title='Sort By'
-					options={['Price', 'Marketplace', 'Ratings']}
-				/>
-				<Filter
-					type='DROPDOWN'
-					title='Sort By'
-					options={['Price', 'Marketplace', 'Ratings']}
-				/>
-			</div>
-			<div className='flex-shrink-0'>
-				<button type='button' class='btn btn-primary rounded-pill'>
-					clear filters
+		<>
+			<div className='d-inline-flex gap-2 justify-content-start'>
+				<button type='button' class='btn btn-outline-primary rounded-pill'>
+					Clear filters
 				</button>
+				<Filter
+					type='SORT'
+					title='Sort By'
+					iconName='swap-vertical-outline'
+					options={['Price', 'Marketplace', 'Ratings']}
+				/>
+
+				<Filter
+					type='RANGE'
+					title='Price'
+					iconName='cash-outline'
+					options={['Price', 'Marketplace', 'Ratings']}
+				/>
 			</div>
+		</>
+	);
+}
+
+function Filter({ type, title, options, iconName }) {
+	//TODO - add state management for selected option
+	const [selectedIndex, setSelectedIndex] = useState(-1);
+	const [sortOrder, setSortOrder] = useState(0); //0: unsorted, -1: ascending, 1: descending
+	const [range, setRange] = useState([0, 100, 0]); //min,max,selected
+	const [filterText, setFilterText] = useState('');
+
+	if (selectedIndex > -1 && sortOrder === 0) {
+		setSortOrder(-1);
+	}
+
+	function getDropdownContentBasedOnType({ type, title, options, iconName }) {
+		switch (type) {
+			case 'SORT':
+				return (
+					<>
+						<li class='dropdown-item'>
+							<div class='form-check'>
+								<input
+									class='form-check-input'
+									type='radio'
+									name='radioSortOrder'
+									id={title + 'radioAscending'}
+									checked={sortOrder === -1}
+									onChange={e => setSortOrder(-1)}
+								/>
+								<label class='form-check-label' for='radioSortOrder'>
+									Low to High
+								</label>
+							</div>
+						</li>
+
+						<li class='dropdown-item'>
+							<div class='form-check'>
+								<input
+									class='form-check-input'
+									type='radio'
+									name='radioSortOrder'
+									id={title + 'radioDescending'}
+									checked={sortOrder === 1}
+									onChange={e => setSortOrder(1)}
+								/>
+								<label class='form-check-label' for='radioSortOrder'>
+									High to Low
+								</label>
+							</div>
+						</li>
+						<li>
+							<hr class='dropdown-divider' />
+						</li>
+						{options.map((i, index) => (
+							<li class='dropdown-item' key={type + index + 'li'}>
+								<div class='form-check'>
+									<input
+										class='form-check-input'
+										type='radio'
+										name={title + 'radio'}
+										id={title + 'radio' + index + type}
+										checked={selectedIndex === index}
+										onChange={e => setSelectedIndex(index)}
+									/>
+									<label
+										class='form-check-label'
+										for={title + 'radio' + index + type}>
+										{i}
+									</label>
+								</div>
+							</li>
+						))}
+					</>
+				);
+			case 'RANGE':
+				console.log(range);
+				return (
+					<>
+						<li class='dropdown-item fs-6'>
+							<div class='input-group mb-3'>
+								<span class='input-group-text'>Min</span>
+
+								<input
+									type='text'
+									class='form-control'
+									aria-label='Dollar amount (with dot and two decimal places)'
+									value={range[0]}
+									onChange={e =>
+										setRange([Math.max(e.target.value, 0), range[1], range[2]])
+									}
+									placeholder='Min'
+								/>
+							</div>
+
+							<div class='input-group'>
+								<input
+									type='number'
+									class='form-control'
+									aria-label='Dollar amount (with dot and two decimal places)'
+									value={range[1]}
+									onChange={e =>
+										setRange([
+											range[0],
+											Math.min(e.target.value, Number.MAX_SAFE_INTEGER),
+											range[2],
+										])
+									}
+									placeholder='max'
+								/>
+								<span class='input-group-text'>Max</span>
+							</div>
+						</li>
+					</>
+				);
+			default:
+				console.log('default dropdown');
+				return <></>;
+		}
+	}
+
+	console.log(filterText);
+	return (
+		<div class='btn-group'>
+			<button type='button' class='btn btn-outline-secondary text-center rounded-start-pill'>
+				<ion-icon name={iconName} class='me-2'></ion-icon>
+				{title}
+			</button>
+			<button
+				type='button'
+				class='btn btn-outline-secondary dropdown-toggle dropdown-toggle-split rounded-end-circle'
+				data-bs-toggle='dropdown'
+				aria-expanded='false'>
+				<span class='visually-hidden'>Toggle Dropdown</span>
+			</button>
+			<ul class='dropdown-menu w-auto'>
+				{getDropdownContentBasedOnType({ type, title, options, iconName })}
+			</ul>
 		</div>
 	);
 }
 
-function Filter(props) {
-	//TODO - add state management for selected option
-	switch (props.type) {
-		case 'DROPDOWN':
-			const defaultIndex = props.default ? props.default : 0;
-			return (
-				<div class='btn-group flex-shrink-0'>
-					<button
-						type='button'
-						class='btn btn-outline-secondary dropdown-toggle rounded-pill'
-						data-bs-toggle='dropdown'
-						aria-expanded='false'>
-						{props.title}
-					</button>
-					<ul class='dropdown-menu'>
-						<div class='form-check'>
-							{props.options.map((i, index) => (
-								<li key={i} class='dropdown-item'>
-									<input
-										class='form-check-input'
-										type='radio'
-										name={i}
-										id={i}
-										checked={index === defaultIndex}
-									/>
-									<label class='form-check-label' for='flexRadioDefault1'>
-										{i}
-									</label>
-								</li>
-							))}
-						</div>
-					</ul>
-				</div>
-			);
-		default:
-			return <></>;
-	}
-}
-
 function ProductResults(props) {
 	return (
-		<div className='container-fluid'>
+		<div className='container-fluid d-flex flex-column gap-2 px-4'>
+			<FilterBar />
 			<h3>Search Results</h3>
 			<div className='d-inline-flex flex-wrap justify-content-between gap-2'>
 				{props.products &&
@@ -152,8 +256,9 @@ function ProductCard({ title, rating, imgSrc, marketplace, price, currency, prod
 					style={{ minWidth: '0px', maxWidth: '240px' }}>
 					{title}
 				</h5>
-				<p class='card-text text-truncate'>
+				<p class='card-text p-0 m-0'>
 					<div class='ratings'>
+						<span class='me-2 review-count fs-6 text-body-secondary'>{rating}</span>
 						{Array(5)
 							.fill()
 							.map((_e, i) => i < finalRating)
@@ -164,7 +269,9 @@ function ProductCard({ title, rating, imgSrc, marketplace, price, currency, prod
 									<ion-icon name='star-outline'></ion-icon>
 								)
 							)}
-						<span class='mx-2 review-count fs-6 fw-lighter text-secondary'>12</span>
+						<span class='ms-2 review-count fs-6 text-body-secondary'>
+							{parseFloat(Math.random() * 10).toFixed(1) + 'k'}
+						</span>
 					</div>
 				</p>
 			</div>
