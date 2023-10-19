@@ -171,7 +171,7 @@ const mockProducts = [
 		productUrl: 'http://so-net.ne.jp/in/magna/bibendum.json',
 	},
 	{
-		title: 'Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Duis faucibus accumsan odio. Curabitur convallis. Duis consequat dui nec nisi volutpat eleifend. Donec ut dolor. Morbi vel lectus in quam fringilla rhoncus. Mauris enim leo, rhoncus sed, vestibulum sit amet, cursus id, turpis. Integer aliquet, massa id lobortis convallis, tortor risus dapibus augue, vel accumsan tellus nisi eu orci.',
+		title: 'Vestibulum ',
 		imgSrc: 'http://dummyimage.com/200x300.png/5fa2dd/ffffff',
 		marketplace: 'amazon',
 		price: '$501.27',

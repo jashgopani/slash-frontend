@@ -1,24 +1,70 @@
-const { useState, useReducer } = React;
-
+const { useState, useReducer, useRef } = React;
+const SERVER_URL = 'http://127.0.0.1:5000/';
 const appState = {
 	searchResults: [],
 	searchStatus: 0, //0-no search in progress;1-fetching data;2-fetched
+	searchResCode: -1,
 };
-const reducer = (state, action) => {};
+const reducer = (state, { type, data }) => {
+	switch (type) {
+		case 'UPDATE_PRODUCTS':
+			console.log('updated products', data);
+			return { ...state, searchResults: data };
+		case 'UPDATE_SEARCH_STATUS':
+			console.log('updated search status', data);
+			return { ...state, searchStatus: data.status, searchResCode: data.resCode };
+		default:
+			console.log('Unknown action: ' + action);
+			return state;
+	}
+};
 function App({}) {
 	const [state, dispatch] = useReducer(reducer, appState);
 	return (
 		<>
 			<div class='d-flex flex-column gap-2'>
-				<Navbar />
-				<ProductResults products={state['searchResults']} />
+				<Navbar globalState={state} dispatch={dispatch} />
+				<ProductResults globalState={state} dispatch={dispatch} />
 				{/* <div className='my-2 btn btn-outline-primary rounded-pill px-4'>View more</div> */}
 			</div>
 		</>
 	);
 }
 
-function Navbar() {
+function Spinner({ sm }) {
+	return (
+		<div class={`spinner-border ${sm ? 'spinner-border-sm' : ''}`} role='status'>
+			<span class='visually-hidden'>Loading...</span>
+		</div>
+	);
+}
+
+function Toast({ message }) {
+	return (
+		<div
+			class='toast align-items-center text-bg-primary border-0'
+			role='alert'
+			aria-live='assertive'
+			aria-atomic='true'>
+			<div class='d-flex'>
+				<div class='toast-body'>{message}</div>
+				<button
+					type='button'
+					class='btn-close btn-close-white me-2 m-auto'
+					data-bs-dismiss='toast'
+					aria-label='Close'></button>
+			</div>
+		</div>
+	);
+}
+
+function Icon({ name, classes }) {
+	return <ion-icon name={name} class={classes ? classes : ''}></ion-icon>;
+}
+
+function Navbar({ globalState, dispatch }) {
+	const queryRef = useRef('');
+	const [isLoading, setIsLoading] = useState(false);
 	return (
 		<nav class='navbar bg-body-tertiary d-flex p-2 flex-nowrap px-4'>
 			<a class='navbar-brand flex-grow-0 ' href='#'>
@@ -27,19 +73,50 @@ function Navbar() {
 			<form
 				class='d-flex flex-grow-1'
 				role='search'
-				onSubmit={e => {
+				onSubmit={async e => {
 					e.preventDefault();
-					console.log('form submitted');
-					//TODO - fetch products using api and update the relevant state variables
+					console.log('target value: ', queryRef.current);
+					if (
+						(globalState.searchStatus == 0 || globalState.searchStatus == 2) &&
+						queryRef.current &&
+						queryRef.current.trim().length > 0
+					) {
+						dispatch({ type: 'UPDATE_SEARCH_STATUS', data: '1' });
+						setIsLoading(true);
+						try {
+							const data = await fetchProducts(queryRef.current);
+							dispatch({ type: 'UPDATE_PRODUCTS', data });
+							dispatch({
+								type: 'UPDATE_SEARCH_STATUS',
+								data: { status: '2', resCode: 200 },
+							});
+						} catch (error) {
+							console.log(error);
+							dispatch({ type: 'UPDATE_PRODUCTS', data: [] });
+							dispatch({
+								type: 'UPDATE_SEARCH_STATUS',
+								data: { status: '2', resCode: 500 },
+							});
+						} finally {
+							setIsLoading(false);
+						}
+					} else if (globalState.searchStatus == 1) {
+						console.log('Search already in progress');
+						Toast('A search is already in progress');
+					}
 				}}>
 				<input
 					class='form-control me-2 rounded-pill'
 					type='search'
 					placeholder='What are you looking for today ?'
 					aria-label='Search'
+					onChange={e => (queryRef.current = e.target.value)}
 				/>
-				<button class='btn btn-outline-success rounded-pill' type='submit'>
-					Search
+				<button
+					class='btn btn-outline-success rounded-pill'
+					type='submit'
+					disabled={isLoading}>
+					{isLoading ? Spinner({ sm: true }) : 'Search'}
 				</button>
 			</form>
 		</nav>
@@ -76,7 +153,6 @@ function Filter({ type, title, options, iconName }) {
 	const [selectedIndex, setSelectedIndex] = useState(-1);
 	const [sortOrder, setSortOrder] = useState(0); //0: unsorted, -1: ascending, 1: descending
 	const [range, setRange] = useState([0, 100, 0]); //min,max,selected
-	const [filterText, setFilterText] = useState('');
 
 	if (selectedIndex > -1 && sortOrder === 0) {
 		setSortOrder(-1);
@@ -188,7 +264,6 @@ function Filter({ type, title, options, iconName }) {
 		}
 	}
 
-	console.log(filterText);
 	return (
 		<div class='btn-group'>
 			<button type='button' class='btn btn-outline-secondary text-center rounded-start-pill'>
@@ -209,33 +284,47 @@ function Filter({ type, title, options, iconName }) {
 	);
 }
 
-function ProductResults(props) {
-	return (
-		<div className='container-fluid d-flex flex-column gap-2 px-4'>
-			<FilterBar />
-			<h3>Search Results</h3>
-			<div className='d-inline-flex flex-wrap justify-content-between gap-2'>
-				{props.products &&
-					props.products.length > 0 &&
-					props.products.map(p => {
-						const rw = Math.round(100 + Math.random() * 1000);
-						const rh = Math.round(100 + Math.random() * 1000);
-						return (
-							<ProductCard
-								key={p.marketplace + '#' + p.title}
-								title={p.title.substring(0, 20)}
-								rating={p.rating}
-								imgSrc={`https://picsum.photos/${rw}/${rh}`}
-								marketplace={p.marketplace}
-								price={p.price}
-								currency={p.currency}
-								productURL={p.productURL}
-							/>
-						);
-					})}
+function ProductResults({ globalState, dispatch }) {
+	const products = globalState.searchResults;
+	if (products && products.length > 0) {
+		return (
+			<div className='container-fluid d-flex flex-column gap-2 px-4'>
+				<FilterBar />
+				<h3>Search Results</h3>
+				<div className='d-inline-flex flex-wrap justify-content-between gap-2'>
+					{products &&
+						products.length > 0 &&
+						products.map(p => {
+							const rw = Math.round(100 + Math.random() * 1000);
+							const rh = Math.round(100 + Math.random() * 1000);
+							return (
+								<ProductCard
+									key={p.marketplace + '#' + p.title}
+									title={p.title.substring(0, 20)}
+									rating={p.rating}
+									imgSrc={`https://picsum.photos/${rw}/${rh}`}
+									marketplace={p.marketplace}
+									price={p.price}
+									currency={p.currency}
+									productURL={p.productURL}
+								/>
+							);
+						})}
+				</div>
 			</div>
-		</div>
-	);
+		);
+	} else {
+		return (
+			<div className='container-fluid d-flex flex-grow-1 justify-contents-center align-items-middle flex-column gap-2 px-4 text-center '>
+				<img
+					src='../assets/search.svg'
+					class='img-fluid mx-auto d-block w-25'
+					alt='Search to find results'
+				/>
+				<span class='text-body-secondary'>Search for a product to see results</span>
+			</div>
+		);
+	}
 }
 
 function ProductCard({ title, rating, imgSrc, marketplace, price, currency, productURL }) {
@@ -281,4 +370,17 @@ function ProductCard({ title, rating, imgSrc, marketplace, price, currency, prod
 
 function Search() {
 	return <input type='text' placeholder='What are you looking for?' />;
+}
+
+async function fetchProducts(query) {
+	const response = await fetch(`${SERVER_URL}/search`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({ product_name: query }),
+	});
+	const res = await response.json();
+	console.log(res);
+	return res;
 }
