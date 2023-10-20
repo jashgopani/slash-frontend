@@ -5,33 +5,74 @@ const reducer = (state, { type, data }) => {
 	switch (type) {
 		case 'UPDATE_PRODUCTS':
 			console.log('updated products', data);
-			return { ...state, searchResults: data };
+			return { ...state, searchResults: data, filteredSearchResults: data };
 		case 'UPDATE_SEARCH_STATUS':
 			console.log('updated search status', data);
 			return { ...state, searchStatus: data.status, searchResCode: data.resCode };
 		case 'ADD_FILTER':
+			const existingFilters = state.filters;
 			console.log('adding filter: ', data);
-			return { ...state, filters: { ...state['filters'], ...data } };
+			return {
+				...state,
+				filteredSearchResults: filterSearchResults(
+					{ ...existingFilters, ...data },
+					state.searchResults
+				),
+			};
 		default:
 			console.log('Unknown action: ' + action);
 			return state;
 	}
 };
+
+function filterSearchResults(filters, results) {
+	console.log('filterSearchResults', filters);
+	if (!filters || results.length === 0 || (filters && isEmpty(filters))) return results;
+
+	console.log('filtering search results');
+	let finalResults = results;
+	const rangeBasedFilters = Object.entries(filters).filter(fe => {
+		return fe[0].startsWith('RANGE');
+	});
+	const sortingFilters = Object.entries(filters).filter(fe => {
+		return fe[0].startsWith('SORT');
+	});
+
+	console.log(rangeBasedFilters, sortingFilters);
+	if (rangeBasedFilters && rangeBasedFilters.length > 0) {
+		console.log('Before range filtering:', finalResults.length);
+		finalResults = rangeBasedFilters.reduce((fRes, currFe) => {
+			return fRes.filter(currFe[1]);
+		}, finalResults);
+		console.log('After range filtering:', finalResults.length);
+	}
+	if (sortingFilters && sortingFilters.length > 0) {
+		console.log('Sorting results:', sortingFilters);
+		finalResults = rangeBasedFilters.reduce((fRes, currFe) => {
+			return fRes.sort(currFe[1]);
+		}, finalResults);
+	}
+	return finalResults;
+}
 function App({}) {
 	const appState = {
 		searchResults: [],
 		searchStatus: 0, //0-no search in progress;1-fetching data;2-fetched
 		searchResCode: -1, //this would be the httpStatusCode of the previous response
 		filters: {}, //key->filter function
+		filteredSearchResults: [],
 	};
 	const [state, dispatch] = useReducer(reducer, appState);
-	console.log({ state });
+
 	return (
 		<>
 			<div class='d-flex flex-column gap-2'>
 				<Navbar searchStatus={state.searchStatus} dispatch={dispatch} />
-				<ProductResults searchResults={state.searchResults} dispatch={dispatch} />
-				{/* <div className='my-2 btn btn-outline-primary rounded-pill px-4'>View more</div> */}
+				<ProductResults
+					searchResults={state.filteredSearchResults}
+					searchResCode={state.searchResCode}
+					dispatch={dispatch}
+				/>
 			</div>
 		</>
 	);
@@ -150,6 +191,9 @@ function FilterBar({ dispatch }) {
 	);
 }
 
+function isEmpty(obj) {
+	return Object.keys(obj).length === 0;
+}
 function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 	const initialConditions = {
 		selectedIndex: -1,
@@ -164,10 +208,6 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 		return nc;
 	}
 
-	function isEmpty(obj) {
-		return Object.keys(obj).length === 0;
-	}
-
 	function getDropdownContentBasedOnType() {
 		const filterFunction = e => e;
 		const data = {};
@@ -180,25 +220,6 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 					setConditions(c => updateCondition(c, 'sortOrder', -1));
 				}
 
-				if (conditions.selectedIndex > -1 && conditions.sortOrder != 0) {
-					const filterAttribute = options[selectedIndex];
-					const ascendingFilterFunction = (a, b) => {
-						if (a[filterAttribute] > b[filterAttribute]) return 1;
-						else if (a[filterAttribute] < b[filterAttribute]) return -1;
-						return 0;
-					};
-
-					const descendingFilterFunction = (a, b) => {
-						if (a[filterAttribute] > b[filterAttribute]) return 1;
-						else if (a[filterAttribute] < b[filterAttribute]) return -1;
-						return 0;
-					};
-					data[filterKey] =
-						sortOrder == -1 ? ascendingFilterFunction : descendingFilterFunction;
-					dispatch({ type: 'ADD_FILTER', data });
-				} else {
-					dispatch({ type: 'ADD_FILTER', data });
-				}
 				return (
 					<>
 						<li class='dropdown-item'>
@@ -213,9 +234,10 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 										conditions.sortOrder === -1 &&
 										conditions.selectedIndex > -1
 									}
-									onChange={e =>
-										setConditions(c => updateCondition(c, 'sortOrder', -1))
-									}
+									onChange={e => {
+										setConditions(c => updateCondition(c, 'sortOrder', -1));
+										dispatchAddFilterForSort(data, filterKey);
+									}}
 								/>
 								<label class='form-check-label' for='radioSortOrder'>
 									Low to High
@@ -235,9 +257,10 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 										conditions.sortOrder === 1 &&
 										conditions.selectedIndex > -1
 									}
-									onChange={e =>
-										setConditions(c => updateCondition(c, 'sortOrder', 1))
-									}
+									onChange={e => {
+										setConditions(c => updateCondition(c, 'sortOrder', 1));
+										dispatchAddFilterForSort(data, filterKey);
+									}}
 								/>
 								<label class='form-check-label' for='radioSortOrder'>
 									High to Low
@@ -259,11 +282,12 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 											!isEmpty(conditions) &&
 											conditions.selectedIndex === index
 										}
-										onChange={e =>
+										onChange={e => {
 											setConditions(c =>
 												updateCondition(c, 'selectedIndex', index)
-											)
-										}
+											);
+											dispatchAddFilterForSort(data, filterKey);
+										}}
 									/>
 									<label
 										class='form-check-label'
@@ -276,9 +300,6 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 					</>
 				);
 			case 'RANGE':
-				data[filterKey] = p =>
-					p[objProperty] >= conditions.range[0] && p[objProperty] <= conditions.range[1];
-				dispatch({ type: 'ADD_FILTER', data });
 				return (
 					<>
 						<li class='dropdown-item fs-6'>
@@ -291,7 +312,7 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 									aria-label='Dollar amount (with dot and two decimal places)'
 									value={!isEmpty(conditions) ? conditions.range[0] : 0}
 									onChange={e => {
-										if (e.target.value < conditions['range'][1])
+										if (e.target.value < conditions['range'][1]) {
 											setConditions(c =>
 												updateCondition(c, 'range', [
 													Math.max(e.target.value, 0),
@@ -299,6 +320,13 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 													c.range[2],
 												])
 											);
+
+											//update filters in appState
+											data[filterKey] = p =>
+												p[objProperty] >= conditions.range[0] &&
+												p[objProperty] <= conditions.range[1];
+											dispatch({ type: 'ADD_FILTER', data });
+										}
 									}}
 									placeholder='Min'
 								/>
@@ -335,7 +363,29 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 				return <></>;
 		}
 	}
+	function dispatchAddFilterForSort(data, filterKey) {
+		console.log('dispatchAddFilterForSort', conditions);
+		if (conditions['selectedIndex'] > -1 && conditions['sortOrder'] != 0) {
+			const filterAttribute = options[conditions['selectedIndex']];
+			console.log({ filterAttribute });
+			const ascendingFilterFunction = (a, b) => {
+				if (a[filterAttribute] > b[filterAttribute]) return 1;
+				else if (a[filterAttribute] < b[filterAttribute]) return -1;
+				return 0;
+			};
 
+			const descendingFilterFunction = (a, b) => {
+				if (a[filterAttribute] > b[filterAttribute]) return 1;
+				else if (a[filterAttribute] < b[filterAttribute]) return -1;
+				return 0;
+			};
+			data[filterKey] =
+				conditions['sortOrder'] == -1 ? ascendingFilterFunction : descendingFilterFunction;
+			dispatch({ type: 'ADD_FILTER', data });
+		} else {
+			dispatch({ type: 'ADD_FILTER', data });
+		}
+	}
 	return (
 		<div class='btn-group'>
 			<button type='button' class='btn btn-outline-secondary text-center rounded-start-pill'>
@@ -365,12 +415,13 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 			</ul>
 		</div>
 	);
+
 	//TODO - set a unified constraints state object instead of individual state variables
 }
 
-function ProductResults({ searchResults, dispatch }) {
+function ProductResults({ searchResults, searchResCode, dispatch }) {
 	const products = searchResults;
-	if (products && products.length > 0) {
+	if (products && products.length > 0 && searchResCode != -1) {
 		return (
 			<div className='container-fluid d-flex flex-column gap-2 px-4'>
 				<FilterBar dispatch={dispatch} />
@@ -379,18 +430,17 @@ function ProductResults({ searchResults, dispatch }) {
 					{products &&
 						products.length > 0 &&
 						products.map(p => {
-							const rw = Math.round(100 + Math.random() * 1000);
-							const rh = Math.round(100 + Math.random() * 1000);
 							return (
 								<ProductCard
-									key={p.marketplace + '#' + p.title}
+									key={p.productUrl}
 									title={p.title.substring(0, 20)}
 									rating={p.rating}
-									imgSrc={`https://picsum.photos/${rw}/${rh}`}
+									imgSrc={p.imgSrc}
 									marketplace={p.marketplace}
 									price={p.price}
 									currency={p.currency}
 									productURL={p.productURL}
+									noOfRatings={p.noOfRatings}
 								/>
 							);
 						})}
@@ -411,7 +461,16 @@ function ProductResults({ searchResults, dispatch }) {
 	}
 }
 
-function ProductCard({ title, rating, imgSrc, marketplace, price, currency, productURL }) {
+function ProductCard({
+	title,
+	rating,
+	imgSrc,
+	marketplace,
+	price,
+	currency,
+	productURL,
+	noOfRatings,
+}) {
 	const finalRating = Math.round(rating);
 	return (
 		<div
@@ -424,29 +483,35 @@ function ProductCard({ title, rating, imgSrc, marketplace, price, currency, prod
 					alt={title + ' from ' + marketplace}
 					style={{ width: '240px', height: '280px', objectFit: 'cover' }}
 				/>
-				<h5
-					class='card-title text-truncate '
-					style={{ minWidth: '0px', maxWidth: '240px' }}>
-					{title}
-				</h5>
-				<p class='card-text p-0 m-0'>
-					<div class='ratings'>
-						<span class='me-2 review-count fs-6 text-body-secondary'>{rating}</span>
-						{Array(5)
-							.fill()
-							.map((_e, i) => i < finalRating)
-							.map(v =>
-								v ? (
-									<ion-icon name='star'></ion-icon>
-								) : (
-									<ion-icon name='star-outline'></ion-icon>
-								)
-							)}
-						<span class='ms-2 review-count fs-6 text-body-secondary'>
-							{parseFloat(Math.random() * 10).toFixed(1) + 'k'}
-						</span>
-					</div>
-				</p>
+			</div>
+			<h5 class='px-2 card-title text-truncate'>
+				<a
+					href={productURL}
+					style={{ minWidth: '0px', maxWidth: '240px' }}
+					target='_blank'
+					rel='noopener noreferrer'>
+					{title.substring(0, 30) + (title.length > 25 ? '...' : '')}
+				</a>
+			</h5>
+			<p class='card-text px-2 m-0'>
+				<div class='ratings'>
+					<span class='me-2 review-count fs-6 text-body-secondary'>{rating}</span>
+					{Array(5)
+						.fill()
+						.map((_e, i) => i < finalRating)
+						.map(v =>
+							v ? (
+								<ion-icon name='star'></ion-icon>
+							) : (
+								<ion-icon name='star-outline'></ion-icon>
+							)
+						)}
+					<span class='ms-2 review-count fs-6 text-body-secondary'>{noOfRatings}</span>
+				</div>
+			</p>
+
+			<div class='card-footer text-body-secondary d-flex justify-content-between fw-bold'>
+				{price} <span class='badge text-bg-primary'>{marketplace}</span>
 			</div>
 		</div>
 	);
@@ -457,14 +522,81 @@ function Search() {
 }
 
 async function fetchProducts(query) {
-	// const response = await fetch(`${SERVER_URL}/search`, {
-	// 	method: 'POST',
-	// 	headers: {
-	// 		'Content-Type': 'application/json',
-	// 	},
-	// 	body: JSON.stringify({ product_name: query }),
-	// });
-	// const res = await response.json();
-	// console.log(res);
-	return mockProducts;
+	const response = await fetch(`${SERVER_URL}/search?product_name=${query}`);
+	const res = await response.json();
+	let fres = res
+		.map(p => ({
+			title: p['title'],
+			imgSrc: p['images'],
+			productURL: p['link'],
+			rating: p['rating'],
+			noOfRatings: p['no of ratings'],
+			price: p['price'],
+			marketplace: p['website'],
+		}))
+		.map(p => {
+			const cs = cosineSimilarity(query, p.title);
+			console.log(p.title, query, cs);
+			return { ...p, relevance: cs };
+		})
+		.sort((p1, p2) => {
+			return Math.sign(p2 - p1);
+		});
+
+	return fres;
+}
+
+function cosineSimilarity(str1, str2) {
+	const vec1 = buildVector(str1);
+	const vec2 = buildVector(str2);
+
+	const maxLength = Math.max(vec1.length, vec2.length);
+
+	while (vec1.length < maxLength) {
+		vec1.push(0);
+	}
+
+	while (vec2.length < maxLength) {
+		vec2.push(0);
+	}
+
+	let dotProduct = 0;
+	let mag1 = 0;
+	let mag2 = 0;
+
+	for (let i = 0; i < maxLength; i++) {
+		dotProduct += vec1[i] * vec2[i];
+		mag1 += vec1[i] ** 2;
+		mag2 += vec2[i] ** 2;
+	}
+
+	const magnitudeProduct = Math.sqrt(mag1) * Math.sqrt(mag2);
+
+	if (magnitudeProduct === 0) {
+		return 0;
+	}
+
+	return dotProduct / magnitudeProduct;
+}
+
+function buildVector(str) {
+	const words = str.toLowerCase().match(/\b\S+\b/g) || [];
+	const wordMap = {};
+	const vector = [];
+
+	for (let word of words) {
+		wordMap[word] = (wordMap[word] || 0) + 1;
+	}
+
+	for (let word in wordMap) {
+		vector.push(wordMap[word]);
+	}
+
+	return vector;
+}
+
+function deepEquals(o1, o2) {
+	if (o1 && o2) return JSON.stringify(o1) === JSON.stringify(o2);
+	else if (!o1 && !o2) return true;
+	else return false;
 }
