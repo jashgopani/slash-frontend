@@ -1,10 +1,6 @@
 const { useState, useReducer, useRef } = React;
 const SERVER_URL = 'http://127.0.0.1:5000/';
-const appState = {
-	searchResults: [],
-	searchStatus: 0, //0-no search in progress;1-fetching data;2-fetched
-	searchResCode: -1,
-};
+
 const reducer = (state, { type, data }) => {
 	switch (type) {
 		case 'UPDATE_PRODUCTS':
@@ -13,18 +9,28 @@ const reducer = (state, { type, data }) => {
 		case 'UPDATE_SEARCH_STATUS':
 			console.log('updated search status', data);
 			return { ...state, searchStatus: data.status, searchResCode: data.resCode };
+		case 'ADD_FILTER':
+			console.log('adding filter: ', data);
+			return { ...state, filters: { ...state['filters'], ...data } };
 		default:
 			console.log('Unknown action: ' + action);
 			return state;
 	}
 };
 function App({}) {
+	const appState = {
+		searchResults: [],
+		searchStatus: 0, //0-no search in progress;1-fetching data;2-fetched
+		searchResCode: -1, //this would be the httpStatusCode of the previous response
+		filters: {}, //key->filter function
+	};
 	const [state, dispatch] = useReducer(reducer, appState);
+	console.log({ state });
 	return (
 		<>
 			<div class='d-flex flex-column gap-2'>
-				<Navbar globalState={state} dispatch={dispatch} />
-				<ProductResults globalState={state} dispatch={dispatch} />
+				<Navbar searchStatus={state.searchStatus} dispatch={dispatch} />
+				<ProductResults searchResults={state.searchResults} dispatch={dispatch} />
 				{/* <div className='my-2 btn btn-outline-primary rounded-pill px-4'>View more</div> */}
 			</div>
 		</>
@@ -62,7 +68,7 @@ function Icon({ name, classes }) {
 	return <ion-icon name={name} class={classes ? classes : ''}></ion-icon>;
 }
 
-function Navbar({ globalState, dispatch }) {
+function Navbar({ searchStatus, dispatch }) {
 	const queryRef = useRef('');
 	const [isLoading, setIsLoading] = useState(false);
 	return (
@@ -77,7 +83,7 @@ function Navbar({ globalState, dispatch }) {
 					e.preventDefault();
 					console.log('target value: ', queryRef.current);
 					if (
-						(globalState.searchStatus == 0 || globalState.searchStatus == 2) &&
+						(searchStatus == 0 || searchStatus == 2) &&
 						queryRef.current &&
 						queryRef.current.trim().length > 0
 					) {
@@ -92,6 +98,7 @@ function Navbar({ globalState, dispatch }) {
 							});
 						} catch (error) {
 							console.log(error);
+							Toast({ message: error });
 							dispatch({ type: 'UPDATE_PRODUCTS', data: [] });
 							dispatch({
 								type: 'UPDATE_SEARCH_STATUS',
@@ -100,9 +107,6 @@ function Navbar({ globalState, dispatch }) {
 						} finally {
 							setIsLoading(false);
 						}
-					} else if (globalState.searchStatus == 1) {
-						console.log('Search already in progress');
-						Toast('A search is already in progress');
 					}
 				}}>
 				<input
@@ -123,44 +127,78 @@ function Navbar({ globalState, dispatch }) {
 	);
 }
 
-function FilterBar({}) {
+function FilterBar({ dispatch }) {
 	return (
 		<>
 			<div className='d-inline-flex gap-2 justify-content-start'>
-				<button type='button' class='btn btn-outline-primary rounded-pill'>
-					Clear filters
-				</button>
 				<Filter
 					type='SORT'
 					title='Sort By'
 					iconName='swap-vertical-outline'
 					options={['Price', 'Marketplace', 'Ratings']}
+					dispatch={dispatch}
 				/>
-
 				<Filter
 					type='RANGE'
 					title='Price'
 					iconName='cash-outline'
-					options={['Price', 'Marketplace', 'Ratings']}
+					dispatch={dispatch}
+					objProperty='price'
 				/>
 			</div>
 		</>
 	);
 }
 
-function Filter({ type, title, options, iconName }) {
-	//TODO - add state management for selected option
-	const [selectedIndex, setSelectedIndex] = useState(-1);
-	const [sortOrder, setSortOrder] = useState(0); //0: unsorted, -1: ascending, 1: descending
-	const [range, setRange] = useState([0, 100, 0]); //min,max,selected
+function Filter({ type, title, options, iconName, objProperty, dispatch }) {
+	const initialConditions = {
+		selectedIndex: -1,
+		sortOrder: 0,
+		range: [0, Number.MAX_SAFE_INTEGER, false],
+	};
+	const [conditions, setConditions] = useState(initialConditions);
 
-	if (selectedIndex > -1 && sortOrder === 0) {
-		setSortOrder(-1);
+	function updateCondition(current, attribute, newValue) {
+		const nc = { ...current };
+		nc[attribute] = newValue;
+		return nc;
 	}
 
-	function getDropdownContentBasedOnType({ type, title, options, iconName }) {
+	function isEmpty(obj) {
+		return Object.keys(obj).length === 0;
+	}
+
+	function getDropdownContentBasedOnType() {
+		const filterFunction = e => e;
+		const data = {};
+		const filterKey = `${type}:${title}`;
+		data[filterKey] = filterFunction;
+
 		switch (type) {
 			case 'SORT':
+				if (conditions.selectedIndex > -1 && conditions.sortOrder === 0) {
+					setConditions(c => updateCondition(c, 'sortOrder', -1));
+				}
+
+				if (conditions.selectedIndex > -1 && conditions.sortOrder != 0) {
+					const filterAttribute = options[selectedIndex];
+					const ascendingFilterFunction = (a, b) => {
+						if (a[filterAttribute] > b[filterAttribute]) return 1;
+						else if (a[filterAttribute] < b[filterAttribute]) return -1;
+						return 0;
+					};
+
+					const descendingFilterFunction = (a, b) => {
+						if (a[filterAttribute] > b[filterAttribute]) return 1;
+						else if (a[filterAttribute] < b[filterAttribute]) return -1;
+						return 0;
+					};
+					data[filterKey] =
+						sortOrder == -1 ? ascendingFilterFunction : descendingFilterFunction;
+					dispatch({ type: 'ADD_FILTER', data });
+				} else {
+					dispatch({ type: 'ADD_FILTER', data });
+				}
 				return (
 					<>
 						<li class='dropdown-item'>
@@ -170,8 +208,14 @@ function Filter({ type, title, options, iconName }) {
 									type='radio'
 									name='radioSortOrder'
 									id={title + 'radioAscending'}
-									checked={sortOrder === -1}
-									onChange={e => setSortOrder(-1)}
+									checked={
+										!isEmpty(conditions) &&
+										conditions.sortOrder === -1 &&
+										conditions.selectedIndex > -1
+									}
+									onChange={e =>
+										setConditions(c => updateCondition(c, 'sortOrder', -1))
+									}
 								/>
 								<label class='form-check-label' for='radioSortOrder'>
 									Low to High
@@ -186,8 +230,14 @@ function Filter({ type, title, options, iconName }) {
 									type='radio'
 									name='radioSortOrder'
 									id={title + 'radioDescending'}
-									checked={sortOrder === 1}
-									onChange={e => setSortOrder(1)}
+									checked={
+										!isEmpty(conditions) &&
+										conditions.sortOrder === 1 &&
+										conditions.selectedIndex > -1
+									}
+									onChange={e =>
+										setConditions(c => updateCondition(c, 'sortOrder', 1))
+									}
 								/>
 								<label class='form-check-label' for='radioSortOrder'>
 									High to Low
@@ -205,8 +255,15 @@ function Filter({ type, title, options, iconName }) {
 										type='radio'
 										name={title + 'radio'}
 										id={title + 'radio' + index + type}
-										checked={selectedIndex === index}
-										onChange={e => setSelectedIndex(index)}
+										checked={
+											!isEmpty(conditions) &&
+											conditions.selectedIndex === index
+										}
+										onChange={e =>
+											setConditions(c =>
+												updateCondition(c, 'selectedIndex', index)
+											)
+										}
 									/>
 									<label
 										class='form-check-label'
@@ -219,7 +276,9 @@ function Filter({ type, title, options, iconName }) {
 					</>
 				);
 			case 'RANGE':
-				console.log(range);
+				data[filterKey] = p =>
+					p[objProperty] >= conditions.range[0] && p[objProperty] <= conditions.range[1];
+				dispatch({ type: 'ADD_FILTER', data });
 				return (
 					<>
 						<li class='dropdown-item fs-6'>
@@ -230,10 +289,17 @@ function Filter({ type, title, options, iconName }) {
 									type='text'
 									class='form-control'
 									aria-label='Dollar amount (with dot and two decimal places)'
-									value={range[0]}
-									onChange={e =>
-										setRange([Math.max(e.target.value, 0), range[1], range[2]])
-									}
+									value={!isEmpty(conditions) ? conditions.range[0] : 0}
+									onChange={e => {
+										if (e.target.value < conditions['range'][1])
+											setConditions(c =>
+												updateCondition(c, 'range', [
+													Math.max(e.target.value, 0),
+													c.range[1],
+													c.range[2],
+												])
+											);
+									}}
 									placeholder='Min'
 								/>
 							</div>
@@ -243,14 +309,20 @@ function Filter({ type, title, options, iconName }) {
 									type='number'
 									class='form-control'
 									aria-label='Dollar amount (with dot and two decimal places)'
-									value={range[1]}
-									onChange={e =>
-										setRange([
-											range[0],
-											Math.min(e.target.value, Number.MAX_SAFE_INTEGER),
-											range[2],
-										])
-									}
+									value={!isEmpty(conditions) ? conditions.range[1] : 100}
+									onChange={e => {
+										if (conditions['range'][0] < e.target.value)
+											setConditions(c =>
+												updateCondition(conditions, 'range', [
+													c.range[0],
+													Math.min(
+														e.target.value,
+														Number.MAX_SAFE_INTEGER
+													),
+													c.range[2],
+												])
+											);
+									}}
 									placeholder='max'
 								/>
 								<span class='input-group-text'>Max</span>
@@ -278,18 +350,30 @@ function Filter({ type, title, options, iconName }) {
 				<span class='visually-hidden'>Toggle Dropdown</span>
 			</button>
 			<ul class='dropdown-menu w-auto'>
-				{getDropdownContentBasedOnType({ type, title, options, iconName })}
+				{getDropdownContentBasedOnType()}
+				<li>
+					<hr class='dropdown-divider' />
+				</li>
+				<li class='dropdown-item fs-6'>
+					<button
+						type='button'
+						class='btn btn-danger btn-sm rounded-pill'
+						onClick={_e => setConditions({})}>
+						Clear Filter
+					</button>
+				</li>
 			</ul>
 		</div>
 	);
+	//TODO - set a unified constraints state object instead of individual state variables
 }
 
-function ProductResults({ globalState, dispatch }) {
-	const products = globalState.searchResults;
+function ProductResults({ searchResults, dispatch }) {
+	const products = searchResults;
 	if (products && products.length > 0) {
 		return (
 			<div className='container-fluid d-flex flex-column gap-2 px-4'>
-				<FilterBar />
+				<FilterBar dispatch={dispatch} />
 				<h3>Search Results</h3>
 				<div className='d-inline-flex flex-wrap justify-content-between gap-2'>
 					{products &&
@@ -373,14 +457,14 @@ function Search() {
 }
 
 async function fetchProducts(query) {
-	const response = await fetch(`${SERVER_URL}/search`, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-		},
-		body: JSON.stringify({ product_name: query }),
-	});
-	const res = await response.json();
-	console.log(res);
-	return res;
+	// const response = await fetch(`${SERVER_URL}/search`, {
+	// 	method: 'POST',
+	// 	headers: {
+	// 		'Content-Type': 'application/json',
+	// 	},
+	// 	body: JSON.stringify({ product_name: query }),
+	// });
+	// const res = await response.json();
+	// console.log(res);
+	return mockProducts;
 }
