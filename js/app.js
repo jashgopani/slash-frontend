@@ -21,29 +21,6 @@ const reducer = (state, { type, data }) => {
 	}
 };
 
-function filterSearchResults(filters, results) {
-	if (!filters || results.length === 0 || (filters && isEmpty(filters))) return results;
-
-	let finalResults = results;
-	const rangeBasedFilters = Object.entries(filters).filter(fe => {
-		return fe[0].startsWith('RANGE');
-	});
-	const sortingFilters = Object.entries(filters).filter(fe => {
-		return fe[0].startsWith('SORT');
-	});
-
-	if (rangeBasedFilters && rangeBasedFilters.length > 0) {
-		finalResults = rangeBasedFilters.reduce((fRes, currFe) => {
-			return fRes.filter(currFe[1]);
-		}, finalResults);
-	}
-	if (sortingFilters && sortingFilters.length > 0) {
-		finalResults = rangeBasedFilters.reduce((fRes, currFe) => {
-			return fRes.sort(currFe[1]);
-		}, finalResults);
-	}
-	return finalResults;
-}
 function App({}) {
 	const appState = {
 		searchResults: [],
@@ -72,25 +49,6 @@ function Spinner({ sm }) {
 	return (
 		<div class={`spinner-border ${sm ? 'spinner-border-sm' : ''}`} role='status'>
 			<span class='visually-hidden'>Loading...</span>
-		</div>
-	);
-}
-
-function Toast({ message }) {
-	return (
-		<div
-			class='toast align-items-center text-bg-primary border-0'
-			role='alert'
-			aria-live='assertive'
-			aria-atomic='true'>
-			<div class='d-flex'>
-				<div class='toast-body'>{message}</div>
-				<button
-					type='button'
-					class='btn-close btn-close-white me-2 m-auto'
-					data-bs-dismiss='toast'
-					aria-label='Close'></button>
-			</div>
 		</div>
 	);
 }
@@ -127,7 +85,6 @@ function Navbar({ searchStatus, dispatch }) {
 								data: { status: '2', resCode: 200 },
 							});
 						} catch (error) {
-							Toast({ message: error });
 							dispatch({ type: 'UPDATE_PRODUCTS', data: [] });
 							dispatch({
 								type: 'UPDATE_SEARCH_STATUS',
@@ -179,9 +136,6 @@ function FilterBar({ dispatch }) {
 	);
 }
 
-function isEmpty(obj) {
-	return Object.keys(obj).length === 0;
-}
 function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 	const initialConditions = {
 		selectedIndex: -1,
@@ -504,6 +458,11 @@ function Search() {
 	return <input type='text' placeholder='What are you looking for?' />;
 }
 
+/**
+ * Fetch the products based on the query
+ * @param {String} query
+ * @returns Array of product details
+ */
 async function fetchProducts(query) {
 	const response = await fetch(`${SERVER_URL}/search?product_name=${query}`);
 	const res = await response.json();
@@ -527,6 +486,15 @@ async function fetchProducts(query) {
 	return fres;
 }
 
+/**
+ * Calculate smith-waterman distance between two strings to evaluate their similarity
+ * @param {String} s1
+ * @param {String} s2
+ * @param {Number} match Score given if characters match
+ * @param {Number} mismatch Penalty value if characters don't match
+ * @param {Number} gap Penalty if found a gap in sequence
+ * @returns Object with a score attribute
+ */
 function smithWatermanSimilarity(s1, s2, match = 1, mismatch = -1, gap = -2) {
 	s1 = s1.toLowerCase();
 	s2 = s2.toLowerCase();
@@ -585,8 +553,53 @@ function smithWatermanSimilarity(s1, s2, match = 1, mismatch = -1, gap = -2) {
 	return { alignmentS1, alignmentS2, score: maxScore };
 }
 
+/**
+ * Compares if two objects are completely equal or not
+ * @param {Object} o1
+ * @param {Object} o2
+ * @returns boolean
+ */
 function deepEquals(o1, o2) {
 	if (o1 && o2) return JSON.stringify(o1) === JSON.stringify(o2);
 	else if (!o1 && !o2) return true;
 	else return false;
+}
+
+/**
+ * Applies sorting and filter functions given in the @filters object on the @results array
+ * @param {Object} filters
+ * @param {Array} results
+ * @returns result array
+ */
+function filterSearchResults(filters, results) {
+	if (!filters || results.length === 0 || (filters && isEmpty(filters))) return results;
+
+	let finalResults = results;
+	const rangeBasedFilters = Object.entries(filters).filter(fe => {
+		return fe[0].startsWith('RANGE');
+	});
+	const sortingFilters = Object.entries(filters).filter(fe => {
+		return fe[0].startsWith('SORT');
+	});
+
+	if (rangeBasedFilters && rangeBasedFilters.length > 0) {
+		finalResults = rangeBasedFilters.reduce((fRes, currFe) => {
+			return fRes.filter(currFe[1]);
+		}, finalResults);
+	}
+	if (sortingFilters && sortingFilters.length > 0) {
+		finalResults = rangeBasedFilters.reduce((fRes, currFe) => {
+			return fRes.sort(currFe[1]);
+		}, finalResults);
+	}
+	return finalResults;
+}
+
+/**
+ * Checks if a JS object is empty or not
+ * @param {*} obj
+ * @returns
+ */
+function isEmpty(obj) {
+	return Object.keys(obj).length === 0;
 }
