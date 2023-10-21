@@ -4,14 +4,11 @@ const SERVER_URL = 'http://127.0.0.1:5000/';
 const reducer = (state, { type, data }) => {
 	switch (type) {
 		case 'UPDATE_PRODUCTS':
-			console.log('updated products', data);
 			return { ...state, searchResults: data, filteredSearchResults: data };
 		case 'UPDATE_SEARCH_STATUS':
-			console.log('updated search status', data);
 			return { ...state, searchStatus: data.status, searchResCode: data.resCode };
 		case 'ADD_FILTER':
 			const existingFilters = state.filters;
-			console.log('adding filter: ', data);
 			return {
 				...state,
 				filteredSearchResults: filterSearchResults(
@@ -20,16 +17,13 @@ const reducer = (state, { type, data }) => {
 				),
 			};
 		default:
-			console.log('Unknown action: ' + action);
 			return state;
 	}
 };
 
 function filterSearchResults(filters, results) {
-	console.log('filterSearchResults', filters);
 	if (!filters || results.length === 0 || (filters && isEmpty(filters))) return results;
 
-	console.log('filtering search results');
 	let finalResults = results;
 	const rangeBasedFilters = Object.entries(filters).filter(fe => {
 		return fe[0].startsWith('RANGE');
@@ -38,16 +32,12 @@ function filterSearchResults(filters, results) {
 		return fe[0].startsWith('SORT');
 	});
 
-	console.log(rangeBasedFilters, sortingFilters);
 	if (rangeBasedFilters && rangeBasedFilters.length > 0) {
-		console.log('Before range filtering:', finalResults.length);
 		finalResults = rangeBasedFilters.reduce((fRes, currFe) => {
 			return fRes.filter(currFe[1]);
 		}, finalResults);
-		console.log('After range filtering:', finalResults.length);
 	}
 	if (sortingFilters && sortingFilters.length > 0) {
-		console.log('Sorting results:', sortingFilters);
 		finalResults = rangeBasedFilters.reduce((fRes, currFe) => {
 			return fRes.sort(currFe[1]);
 		}, finalResults);
@@ -122,7 +112,6 @@ function Navbar({ searchStatus, dispatch }) {
 				role='search'
 				onSubmit={async e => {
 					e.preventDefault();
-					console.log('target value: ', queryRef.current);
 					if (
 						(searchStatus == 0 || searchStatus == 2) &&
 						queryRef.current &&
@@ -138,7 +127,6 @@ function Navbar({ searchStatus, dispatch }) {
 								data: { status: '2', resCode: 200 },
 							});
 						} catch (error) {
-							console.log(error);
 							Toast({ message: error });
 							dispatch({ type: 'UPDATE_PRODUCTS', data: [] });
 							dispatch({
@@ -359,15 +347,12 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 					</>
 				);
 			default:
-				console.log('default dropdown');
 				return <></>;
 		}
 	}
 	function dispatchAddFilterForSort(data, filterKey) {
-		console.log('dispatchAddFilterForSort', conditions);
 		if (conditions['selectedIndex'] > -1 && conditions['sortOrder'] != 0) {
 			const filterAttribute = options[conditions['selectedIndex']];
-			console.log({ filterAttribute });
 			const ascendingFilterFunction = (a, b) => {
 				if (a[filterAttribute] > b[filterAttribute]) return 1;
 				else if (a[filterAttribute] < b[filterAttribute]) return -1;
@@ -415,8 +400,6 @@ function Filter({ type, title, options, iconName, objProperty, dispatch }) {
 			</ul>
 		</div>
 	);
-
-	//TODO - set a unified constraints state object instead of individual state variables
 }
 
 function ProductResults({ searchResults, searchResCode, dispatch }) {
@@ -535,64 +518,71 @@ async function fetchProducts(query) {
 			marketplace: p['website'],
 		}))
 		.map(p => {
-			const cs = cosineSimilarity(query, p.title);
-			console.log(p.title, query, cs);
-			return { ...p, relevance: cs };
+			const similarity = smithWatermanSimilarity(query, p.title);
+			return { ...p, relevance: similarity['score'] };
 		})
 		.sort((p1, p2) => {
-			return Math.sign(p2 - p1);
+			return Math.sign(p1 - p2);
 		});
-
 	return fres;
 }
 
-function cosineSimilarity(str1, str2) {
-	const vec1 = buildVector(str1);
-	const vec2 = buildVector(str2);
+function smithWatermanSimilarity(s1, s2, match = 1, mismatch = -1, gap = -2) {
+	s1 = s1.toLowerCase();
+	s2 = s2.toLowerCase();
+	const n = s1.length;
+	const m = s2.length;
 
-	const maxLength = Math.max(vec1.length, vec2.length);
+	const matrix = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
 
-	while (vec1.length < maxLength) {
-		vec1.push(0);
+	let maxScore = 0;
+	let maxI = 0;
+	let maxJ = 0;
+
+	for (let i = 1; i <= n; i++) {
+		for (let j = 1; j <= m; j++) {
+			if (s1[i - 1] === s2[j - 1]) {
+				matrix[i][j] = Math.max(0, matrix[i - 1][j - 1] + match);
+			} else {
+				matrix[i][j] = Math.max(
+					0,
+					matrix[i - 1][j] + gap,
+					matrix[i][j - 1] + gap,
+					matrix[i - 1][j - 1] + mismatch
+				);
+			}
+
+			if (matrix[i][j] > maxScore) {
+				maxScore = matrix[i][j];
+				maxI = i;
+				maxJ = j;
+			}
+		}
 	}
 
-	while (vec2.length < maxLength) {
-		vec2.push(0);
+	let i = maxI;
+	let j = maxJ;
+	let alignmentS1 = '';
+	let alignmentS2 = '';
+
+	while (i > 0 && j > 0 && matrix[i][j] > 0) {
+		if (matrix[i][j] === matrix[i - 1][j - 1] + (s1[i - 1] === s2[j - 1] ? match : mismatch)) {
+			alignmentS1 = s1[i - 1] + alignmentS1;
+			alignmentS2 = s2[j - 1] + alignmentS2;
+			i--;
+			j--;
+		} else if (i > 0 && (j === 0 || matrix[i][j] === matrix[i - 1][j] + gap)) {
+			alignmentS1 = s1[i - 1] + alignmentS1;
+			alignmentS2 = '-' + alignmentS2;
+			i--;
+		} else {
+			alignmentS1 = '-' + alignmentS1;
+			alignmentS2 = s2[j - 1] + alignmentS2;
+			j--;
+		}
 	}
 
-	let dotProduct = 0;
-	let mag1 = 0;
-	let mag2 = 0;
-
-	for (let i = 0; i < maxLength; i++) {
-		dotProduct += vec1[i] * vec2[i];
-		mag1 += vec1[i] ** 2;
-		mag2 += vec2[i] ** 2;
-	}
-
-	const magnitudeProduct = Math.sqrt(mag1) * Math.sqrt(mag2);
-
-	if (magnitudeProduct === 0) {
-		return 0;
-	}
-
-	return dotProduct / magnitudeProduct;
-}
-
-function buildVector(str) {
-	const words = str.toLowerCase().match(/\b\S+\b/g) || [];
-	const wordMap = {};
-	const vector = [];
-
-	for (let word of words) {
-		wordMap[word] = (wordMap[word] || 0) + 1;
-	}
-
-	for (let word in wordMap) {
-		vector.push(wordMap[word]);
-	}
-
-	return vector;
+	return { alignmentS1, alignmentS2, score: maxScore };
 }
 
 function deepEquals(o1, o2) {
